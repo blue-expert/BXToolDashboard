@@ -1,0 +1,50 @@
+# .github/workflows/ci-build.yml
+
+# 1. Give your workflow a name
+name: CI - Build & Check
+
+# 2. Define your triggers
+# This runs on pushes to 'main' (after a merge)
+# AND on any pull request that targets the 'main' branch
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# 3. Define the job(s) to run
+jobs:
+  # We'll define a single job called "build-and-check"
+  build-and-check:
+    # Use the latest version of Ubuntu to run the job
+    runs-on: ubuntu-latest
+
+    # 4. Define the steps
+    steps:
+      # Step 1: Check out your repository's code
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Docker Buildx (a modern builder)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Step 3: Build the services
+      # This is the command you requested.
+      # It builds 'backend' and 'frontend' as defined in your docker-compose.yml
+      - name: Build Docker images
+        run: docker compose build
+
+      # --- Optional Future Steps ---
+      # You can add these later to make your CI even better
+
+      # - name: Run Backend Tests
+      #   run: |
+      #     echo "Running backend tests..."
+      #     # This command would build, run, and execute 'pytest' inside the backend
+      #     docker compose run --rm backend pytest
+
+      # - name: Run Frontend Tests
+      #   run: |
+      #     echo "Running frontend tests..."
+      #     docker compose run --rm frontend npm test -- --watchAll=false
