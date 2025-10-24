@@ -1,6 +1,9 @@
 # For API calls to backend
 fastapi
+fastapi-azure-auth
 uvicorn[standard]
 pydantic-settings
 
 sqlmodel
+
+python-dotenv
