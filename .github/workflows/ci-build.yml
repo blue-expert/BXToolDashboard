@@ -27,7 +27,7 @@ jobs:
         run: docker compose build
 
 
-  # ---------------------------------------------
+    # ---------------------------------------------
   # JOB 2: The CD "Deploy"
   # ---------------------------------------------
   deploy-to-ghcr:
@@ -52,18 +52,25 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # 👇 Prepare lowercase repository and owner names
+      - name: Prepare lowercase variables
+        id: prep
+        run: |
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO_LC=$(basename "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "owner_lc=$OWNER_LC" >> $GITHUB_OUTPUT
+          echo "repo_lc=$REPO_LC" >> $GITHUB_OUTPUT
+
       - name: Build and Push Backend Image
         uses: docker/build-push-action@v5
         with:
           context: ./portal-backend
           push: true
-          # ⭐️ FIX: Build the tag from two lowercase parts
-          tags: ghcr.io/${{ toLower(github.repository_owner) }}/${{ toLower(github.repository.name) }}/portal-backend:latest
+          tags: ghcr.io/${{ steps.prep.outputs.owner_lc }}/${{ steps.prep.outputs.repo_lc }}/portal-backend:latest
 
       - name: Build and Push Frontend Image
         uses: docker/build-push-action@v5
         with:
           context: ./portal-frontend
           push: true
-          # ⭐️ FIX: Build the tag from two lowercase parts
-          tags: ghcr.io/${{ toLower(github.repository_owner) }}/${{ toLower(github.repository.name) }}/portal-frontend:latest
+          tags: ghcr.io/${{ steps.prep.outputs.owner_lc }}/${{ steps.prep.outputs.repo_lc }}/portal-frontend:latest
