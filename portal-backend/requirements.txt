@@ -1,0 +1,6 @@
+# For API calls to backend
+fastapi
+uvicorn[standard]
+pydantic-settings
+
+sqlmodel

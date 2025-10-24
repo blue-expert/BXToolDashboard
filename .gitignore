@@ -1,1 +1,8 @@
 .github
+.qodo
+
+/portal-backend/.venv
+
+/portal-backend/.env
+
+/portal-frontend/node_modules
