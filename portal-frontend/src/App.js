@@ -34,8 +34,7 @@ const ToolGrid = () => {
   const [loading, setLoading] = useState(true); // Start as true
   const [error, setError] = useState(null);
 
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
-  const API_URL = `${API_BASE_URL}/api/tools`;
+  const API_URL = `/api/tools`;
 
   useEffect(() => {
     async function fetchTools() {

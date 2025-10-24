@@ -1,0 +1,18 @@
+services:
+  # 1. The Backend Service
+  backend:
+    build: ./portal-backend          # Build from the ./portal-backend folder
+    env_file: ./portal-backend/.env  # Use the .env file from that folder
+    volumes:
+      # ⭐️ This maps a folder 'portal-data' on your host
+      # to '/app/data' inside the container, saving your DB
+      - ./portal-data:/app/data
+    # We don't need 'ports' here, Nginx will talk to it directly
+
+  # 2. The Frontend Service (and proxy)
+  frontend:
+    build: ./portal-frontend         # Build from the ./portal-frontend folder
+    ports:
+      - "80:80"                      # Map your host port 80 to the container's port 80
+    depends_on:
+      - backend                      # Tell Docker to start the backend first

@@ -3,7 +3,7 @@ from pydantic import Field
 
 class Settings(BaseSettings):
     # --- Database Setting ---
-    database_url: str = Field(alias='DATABASE_URL')
+    database_url: str = Field(default='sqlite:///./data/portal.db', alias='DATABASE_URL')
 
     # --- Azure Auth Settings ---
     tenant_id: str = Field(alias='AZURE_TENANT_ID')
