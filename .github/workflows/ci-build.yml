@@ -10,6 +10,8 @@ on:
 
 # 3. Define the jobs
 jobs:
+  before-script:
+    - export GITHUB_REPOSITORY=$(echo "$github.repository" | tr '[:upper:]' '[:lower:]')
   # ---------------------------------------------
   # JOB 1: The CI "Check"
   # This job runs on BOTH pull requests and pushes
@@ -64,7 +66,7 @@ jobs:
           context: ./portal-backend
           push: true
           # Tags the image with 'ghcr.io/YOUR_USERNAME/portal-backend:latest'
-          tags: ghcr.io/${{ github.repository }}/portal-backend:latest
+          tags: ghcr.io/${{ GITHUB_REPOSITORY }}/portal-backend:latest
 
       - name: Build and Push Frontend Image
         uses: docker/build-push-action@v5
@@ -72,4 +74,4 @@ jobs:
           context: ./portal-frontend
           push: true
           # Tags the image with 'ghcr.io/YOUR_USERNAME/portal-frontend:latest'
-          tags: ghcr.io/${{ github.repository }}/portal-frontend:latest
+          tags: ghcr.io/${{ GITHUB_REPOSITORY }}/portal-frontend:latest
