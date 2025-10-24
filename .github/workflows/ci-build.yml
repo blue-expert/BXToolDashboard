@@ -7,6 +7,7 @@ on:
     branches: [ "main" ] # Runs on merge to main
   pull_request:
     branches: [ "main" ] # Runs on pull requests to main
+    types: [ opened, synchronize, reopened ]
 
 # 3. Define the jobs
 jobs:
