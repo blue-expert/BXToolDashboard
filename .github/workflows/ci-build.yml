@@ -40,31 +40,37 @@ jobs:
       run: |
         docker build -t $ECR_REGISTRY/$ECR_REPO:latest ./portal-frontend
         docker push $ECR_REGISTRY/$ECR_REPO:latest
-
-    # --- DEPLOY TO EC2 ---
+# --- DEPLOY TO EC2 ---
     - name: Deploy to EC2
       uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ec2-user
         key: ${{ secrets.EC2_SSH_KEY }}
-        # We pass these env vars into the SSH session script
-        envs: ECR_REGISTRY,ECR_REPOSITORY_BACKEND,ECR_REPOSITORY_FRONTEND
         script: |
-          # 1. Export vars for the session
-          export ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
-          export ECR_REPOSITORY_BACKEND=${{ secrets.ECR_REPOSITORY_BACKEND }}
-          export ECR_REPOSITORY_FRONTEND=${{ secrets.ECR_REPOSITORY_FRONTEND }}
+          # 1. Login to Docker (This was working fine)
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
 
-          # 2. Login to Docker on the server
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY
-
-          # 3. Create a directory for the app
+          # 2. Go to app folder
           mkdir -p /home/ec2-user/my-app
           cd /home/ec2-user/my-app
 
-          # 4. Create the data directory (so the volume doesn't fail)
-          mkdir -p portal-data
+          # 3. Create/Overwrite the .env file with values from GitHub
+          # We use "echo" to write the secrets directly to the file on the server.
+          echo "ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}" > .env
+          echo "ECR_REPOSITORY_BACKEND=${{ secrets.ECR_REPOSITORY_BACKEND }}" >> .env
+          echo "ECR_REPOSITORY_FRONTEND=${{ secrets.ECR_REPOSITORY_FRONTEND }}" >> .env
+          
+          # If you have other secrets (like DB passwords), add them here:
+          # echo "SOME_API_KEY=12345" >> .env
+
+          # 4. Pull and Start
+          # Docker Compose automatically reads the .env file we just created
+          docker compose pull
+          docker compose up -d --remove-orphans
+          
+          # 5. Cleanup unused images to save space
+          docker system prune -f
 
     # --- COPY COMPOSE FILE ---
     - name: Copy docker-compose.prod.yml to EC2

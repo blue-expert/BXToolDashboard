@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     # We point to the AWS ECR Image, not the local folder

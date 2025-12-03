@@ -2,4 +2,5 @@
 .qodo
 
 .env
+deploy-key.pem
 node_modules
