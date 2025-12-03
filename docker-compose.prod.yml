@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  backend:
+    # We point to the AWS ECR Image, not the local folder
+    image: ${ECR_REGISTRY}/${ECR_REPOSITORY_BACKEND}:latest
+    env_file: .env
+    volumes:
+      # We map the folder on the EC2 server to the container
+      - ./portal-data:/app/data
+    restart: always
+
+  frontend:
+    image: ${ECR_REGISTRY}/${ECR_REPOSITORY_FRONTEND}:latest
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: always

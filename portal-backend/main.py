@@ -1,10 +1,11 @@
 import logging
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_azure_auth import SingleTenantAzureAuthorizationCodeBearer
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 from contextlib import asynccontextmanager
+import re
 
 # SQLModel imports
 from sqlmodel import SQLModel, Session, select, Field
@@ -109,3 +110,60 @@ def get_all_tools(session: Session = Depends(get_session)):
     statement = select(Tool)
     tools = session.exec(statement).all()
     return tools
+
+
+# --- Request/Response Models ---
+class ToolCreate(SQLModel):
+    name: str
+    description: str
+    target_path: str
+
+
+# --- Helper Functions ---
+def generate_slug(name: str) -> str:
+    """Generate a URL-friendly slug from the tool name."""
+    # Convert to lowercase and replace spaces/special chars with hyphens
+    slug = re.sub(r'[^a-zA-Z0-9\s-]', '', name.lower())
+    slug = re.sub(r'\s+', '-', slug.strip())
+    return slug
+
+
+def is_valid_url(url: str) -> bool:
+    """Check if the URL is valid."""
+    url_pattern = re.compile(
+        r'^https?://'  # http:// or https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain...
+        r'localhost|'  # localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+    return url_pattern.match(url) is not None
+
+
+@app.post("/api/tools", response_model=Tool)
+def create_tool(tool_data: ToolCreate, session: Session = Depends(get_session)):
+    """
+    Create a new tool in the database.
+    """
+    # Generate slug from name
+    slug = generate_slug(tool_data.name)
+    
+    # Check if slug already exists
+    existing_tool = session.exec(select(Tool).where(Tool.slug == slug)).first()
+    if existing_tool:
+        raise HTTPException(status_code=400, detail="A tool with this name already exists")
+    
+    # Create new tool
+    new_tool = Tool(
+        slug=slug,
+        name=tool_data.name,
+        description=tool_data.description,
+        target_path=tool_data.target_path
+    )
+    
+    session.add(new_tool)
+    session.commit()
+    session.refresh(new_tool)
+    
+    logger.info(f"Created new tool: {new_tool.name} with slug: {new_tool.slug}")
+    return new_tool

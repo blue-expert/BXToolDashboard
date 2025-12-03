@@ -1,76 +1,102 @@
-# 1. Give your workflow a name
-name: CI & CD - Build, Check, and Deploy
+name: Deploy Multi-Container App
 
-# 2. Define your triggers
 on:
   push:
-    branches: [ "main" ] # Runs on merge to main
-  pull_request:
-    branches: [ "main" ] # Runs on pull requests to main
+    branches: [ "main" ]
 
-# 3. Define the jobs
 jobs:
-  # ---------------------------------------------
-  # JOB 1: The CI "Check"
-  # This job runs on BOTH pull requests and pushes
-  # ---------------------------------------------
-  build-and-check:
+  deploy:
     runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker images
-        run: docker compose build
-
-
-    # ---------------------------------------------
-  # JOB 2: The CD "Deploy"
-  # ---------------------------------------------
-  deploy-to-ghcr:
-    needs: build-and-check
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
 
-      # 👇 Prepare lowercase repository and owner names
-      - name: Prepare lowercase variables
-        id: prep
-        run: |
-          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          REPO_LC=$(basename "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          echo "owner_lc=$OWNER_LC" >> $GITHUB_OUTPUT
-          echo "repo_lc=$REPO_LC" >> $GITHUB_OUTPUT
+    # --- BUILD & PUSH BACKEND ---
+    - name: Build and push Backend
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPO: ${{ secrets.ECR_REPOSITORY_BACKEND }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPO:latest ./portal-backend
+        docker push $ECR_REGISTRY/$ECR_REPO:latest
 
-      - name: Build and Push Backend Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./portal-backend
-          push: true
-          tags: ghcr.io/${{ steps.prep.outputs.owner_lc }}/${{ steps.prep.outputs.repo_lc }}/portal-backend:latest
+    # --- BUILD & PUSH FRONTEND ---
+    - name: Build and push Frontend
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPO: ${{ secrets.ECR_REPOSITORY_FRONTEND }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPO:latest ./portal-frontend
+        docker push $ECR_REGISTRY/$ECR_REPO:latest
 
-      - name: Build and Push Frontend Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./portal-frontend
-          push: true
-          tags: ghcr.io/${{ steps.prep.outputs.owner_lc }}/${{ steps.prep.outputs.repo_lc }}/portal-frontend:latest
+    # --- DEPLOY TO EC2 ---
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        # We pass these env vars into the SSH session script
+        envs: ECR_REGISTRY,ECR_REPOSITORY_BACKEND,ECR_REPOSITORY_FRONTEND
+        script: |
+          # 1. Export vars for the session
+          export ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          export ECR_REPOSITORY_BACKEND=${{ secrets.ECR_REPOSITORY_BACKEND }}
+          export ECR_REPOSITORY_FRONTEND=${{ secrets.ECR_REPOSITORY_FRONTEND }}
+
+          # 2. Login to Docker on the server
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY
+
+          # 3. Create a directory for the app
+          mkdir -p /home/ec2-user/my-app
+          cd /home/ec2-user/my-app
+
+          # 4. Create the data directory (so the volume doesn't fail)
+          mkdir -p portal-data
+
+    # --- COPY COMPOSE FILE ---
+    - name: Copy docker-compose.prod.yml to EC2
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        source: "docker-compose.prod.yml"
+        target: "/home/ec2-user/my-app"
+
+    # --- FINAL RESTART ---
+    - name: Start Containers
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          cd /home/ec2-user/my-app
+          
+          # Rename the file if needed to standard docker-compose.yml or use -f
+          mv docker-compose.prod.yml docker-compose.yml
+          
+          # Create .env file for the backend on the server (simple version)
+          # Ideally, you store these in GitHub Secrets and echo them here
+          echo "SOME_API_KEY=12345" > .env 
+
+          # Pull new images and restart
+          # Docker Compose V2 is included in Amazon Linux 2023
+          docker compose pull
+          docker compose up -d
+          
+          # Clean up old images to save space
+          docker system prune -f
